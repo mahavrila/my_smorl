@@ -1,4 +1,4 @@
-Preprocessing of rc15 dataset goes like this:  
+Preprocessing of rc15 dataset in original paper goes like this:  
 
   |<---- youchoose_buys.dat  
   |<---- youchoose_clicks.dat  
