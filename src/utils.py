@@ -71,13 +71,13 @@ def prepare_dataloader(data_path, batch_size, dataset=None):
     return train_loader
 
 
-def prepare_dataloader_skips(data_path, batch_size, dataset=None, skip=0):
+def prepare_dataloader_skips(data_path, batch_size, dataset=None, skip=1):
     if dataset is None:
-        replay_buffer = pd.read_pickle(data_path + f'replay_buffer_train_skip={skip}.df')
+        replay_buffer = pd.read_pickle(data_path + f'train_skip_{skip}/replay_buffer_train_skip={skip}.df')
     elif dataset == 'val':
-        replay_buffer = pd.read_pickle(data_path + f'replay_buffer_val_skip={skip}.df')
+        replay_buffer = pd.read_pickle(data_path + f'val_skip_{skip}/replay_buffer_val_skip={skip}.df')
     elif dataset == 'test':
-        replay_buffer = pd.read_pickle(data_path + f'replay_buffer_test_skip={skip}.df')
+        replay_buffer = pd.read_pickle(data_path + f'test_skip_{skip}/replay_buffer_test_skip={skip}.df')
     else:
         raise Exception('dataset has to be either None, val or test')
     replay_buffer_dic = replay_buffer.to_dict()
@@ -144,21 +144,34 @@ def calculate_session_repetitions(session_ids, top_20_preds):
         'top_10_preds': top_10_preds,
         'top_5_preds': top_5_preds
     })
-    num_rpts_20 = 0
-    num_rpts_10 = 0
-    num_rpts_5 = 0
+    num_rpts_20 = {}
+    num_rpts_10 = {}
+    num_rpts_5 = {}
+    groups = {}
+    hists_20 = {}
+    hists_10 = {}
+    hists_5 = {}
+
     rpt_groups = rpt_df.groupby('session_id')
+    group_sizes = rpt_df.groupby('session_id').size()
     for _, group in rpt_groups:
+        mysize = len(group)
+        groups[mysize] = groups.get(mysize, 0) + 1
         all_top_20 = np.concatenate(group.top_20_preds.values)
         all_top_10 = np.concatenate(group.top_10_preds.values)
         all_top_5 = np.concatenate(group.top_5_preds.values)
-        num_rpts_20 += len(all_top_20) - len(np.unique(all_top_20))
-        num_rpts_10 += len(all_top_10) - len(np.unique(all_top_10))
-        num_rpts_5 += len(all_top_5) - len(np.unique(all_top_5))
-    num_rpts_20 /= rpt_groups.ngroups
-    num_rpts_10 /= rpt_groups.ngroups
-    num_rpts_5 /= rpt_groups.ngroups
-    return num_rpts_5, num_rpts_10, num_rpts_20
+        num_rpts_20[mysize] = num_rpts_20.get(mysize, 0) + (len(all_top_20) - len(np.unique(all_top_20)))
+        num_rpts_10[mysize] = num_rpts_10.get(mysize, 0) + (len(all_top_10) - len(np.unique(all_top_10)))
+        num_rpts_5[mysize] = num_rpts_5.get(mysize, 0) + (len(all_top_5) - len(np.unique(all_top_5)))
+
+    for somesize, counts in groups.items():
+        hists_20[somesize] = num_rpts_20[somesize] / counts    #rpt_groups.ngroups
+        hists_10[somesize] = num_rpts_10[somesize] / counts    #rpt_groups.ngroups
+        hists_5[somesize] = num_rpts_5[somesize] / counts     #rpt_groups.ngroups
+    sorted_hists_20 = {k: hists_20[k] for k in sorted(hists_20)}
+    sorted_hists_10 = {k: hists_10[k] for k in sorted(hists_10)}
+    sorted_hists_5 = {k: hists_5[k] for k in sorted(hists_5)}
+    return sorted_hists_5, sorted_hists_10, sorted_hists_20
 
 
 def eval_cov_nov_cov(all_top_20, item_num, data_path):
@@ -237,8 +250,11 @@ def set_stdout(results_path, file_name, write_to_file=True):
 
 
 def get_stats(data_path):
-    data_statis = pd.read_pickle(data_path + 'data_statis.df')  # read data statistics, includeing state_size and item_num
-    state_size = data_statis['state_size'][0]  # the length of history to define the state
+    try:
+        data_statis = pd.read_pickle(data_path.joinpath('data_statis.df'))  # read data statistics, includeing state_size and item_num
+    except AttributeError:
+        data_statis = pd.read_pickle(data_path + 'data_statis.df')
+    state_size = data_statis['state_size'][0]
     item_num = data_statis['item_num'][0]  # total number of items
     return state_size, item_num
 
