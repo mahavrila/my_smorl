@@ -66,7 +66,7 @@ class Args:
     data_path_0 = f'{div4rec}/{dataset}_data/Clicks_only/train_skip_{skip}/'
     data_path = f'{div4rec}/{dataset}_data/Clicks_only/'
     models_path = f'{div4rec}/{dataset}_models/'
-    results_path = f'{div4rec}/{dataset}_results/gru_vanilla/'
+    results_path = f'{div4rec}/{dataset}_results/gru_vanilla_sk{skip}/'
     os.makedirs(results_path, exist_ok=True)
     results_to_file = True
 

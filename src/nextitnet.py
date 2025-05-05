@@ -79,10 +79,10 @@ class Args:
     div4rec = root_dir + '/div4rec'
     div_emb_matrix = torch.load(f'{div4rec}/{dataset}_models/gru_embedding.pt', weights_only=False)
     div_emb_matrix.weight.requires_grad = False
-    data_path_0 = f'{div4rec}/{dataset}_data/Clicks_only/train_skip_1/'
+    data_path_0 = f'{div4rec}/{dataset}_data/Clicks_only/train_skip_{skip}/'
     data_path = f'{div4rec}/{dataset}_data/Clicks_only/'
     models_path = f'{div4rec}/{dataset}_models/'
-    results_path = f'{div4rec}/{dataset}_results/NextItNet/'
+    results_path = f'{div4rec}/{dataset}_results/NextItNet_vanilla_sk{skip}/'
     os.makedirs(results_path, exist_ok=True)
     results_to_file = True
     
