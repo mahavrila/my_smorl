@@ -10,7 +10,6 @@ import numpy as np
 
 from evaluate_stock import evaluate
 from torchinfo import summary
-from torch.utils.tensorboard import SummaryWriter
 
 class GRUSMORL(nn.Module):
     def __init__(self, hidden_size, item_num, state_size, div_embedding_matrix,
@@ -61,6 +60,18 @@ class GRUSMORL(nn.Module):
             div_rewards[i] = current_reward
         return div_rewards
 
+    def get_acc_rewards(self, actions, preds):
+        acc_rewards = torch.zeros(len(actions)).to(self.device)
+        for i in range(len(actions)):
+            action = actions[i]
+            top_pred = preds[i]
+            if action == top_pred:
+                current_reward = 1
+            else:
+                current_reward = 0
+            acc_rewards[i] = current_reward
+        return acc_rewards
+
     def get_nov_rewards(self, preds):
         preds = preds.tolist()
         return torch.Tensor([self.novelty_rewards_dict[1][key] for key in preds]).to(self.device)
@@ -90,6 +101,7 @@ class GRUSMORL(nn.Module):
                       target_Qs_s[:, 2, :] * self.smorl_weights[2]
         max_actions = torch.argmax(target_Qs_s, dim=-1)
         next_state_smorl_q_values = target_Qs[torch.arange(target_Qs.shape[0]), :, max_actions]
+        acc_rewards = self.get_acc_rewards(actions, supervised_preds)
         div_rewards = self.get_div_rewards(states, len_states, supervised_preds)
         nov_rewards = self.get_nov_rewards(supervised_preds)
         rewards = torch.stack([acc_rewards, div_rewards, nov_rewards], dim=0).T
@@ -138,7 +150,7 @@ class Args:
     torch.cuda.manual_seed(random_seed)
     torch.cuda.manual_seed_all(random_seed)
     torch.backends.cudnn.deterministic = True
-    dataset = 'rc15'
+    dataset = 'retail_rocket'
     eval_iter = 5000 if dataset == 'rc15' else 10000
     epochs = 60
     resume = 1
@@ -157,15 +169,15 @@ class Args:
     data_path_0 = f'{div4rec}/{dataset}_data/Clicks_only/train_skip_{skip}/'
     data_path = f'{div4rec}/{dataset}_data/Clicks_only/'
     models_path = f'{div4rec}/{dataset}_models/'
-    results_path = f'{div4rec}/{dataset}_results/gru_RL/'
+    results_path = f'{div4rec}/{dataset}_results/fixed_gru_rl/'
     
     
     os.makedirs(results_path, exist_ok=True)
     results_to_file = True    
-    smorl_weights_set = [torch.Tensor([1.0, 0.0, 1.0])]
-    smorl_weights_set_back = [torch.Tensor([1.0, 1.0, 1.0]), torch.Tensor([0.0, 1.0, 0.0]),
+    smorl_weights_set = [torch.Tensor([1.0, 1.0, 1.0]), torch.Tensor([0.0, 1.0, 0.0]),
                          torch.Tensor([0.0, 0.0, 1.0]), torch.Tensor([0.0, 1.0, 1.0]),
-                         torch.Tensor([1.0, 1.0, 0.0]), torch.Tensor([1.0, 0.0, 1.0])]
+                         torch.Tensor([1.0, 1.0, 0.0]), torch.Tensor([1.0, 0.0, 1.0]),
+                         torch.Tensor([1.0, 0.0, 0.0]), torch.Tensor([0.0, 0.0, 0.0])]
     smorl_loss_mult = 1
     discount = 0.5
     rel_disc_matrix = initialize_rel_disc_matrix(30)
@@ -178,14 +190,13 @@ if __name__ == '__main__':
     device = set_device(0)
     print('Using {} For Training'.format(torch.cuda.get_device_name(device)))
     for smorl_weights in args.smorl_weights_set:
-        file_name = 'gru_smorl{}_acc{}_div{}_nov{}_weighted_q_vals.txt'.format(
+        file_name = 'fix_gru_smorl{}_acc{}_div{}_nov{}_weighted_q_vals.txt'.format(
             str(args.smorl_loss_mult).replace('.', ''),
             smorl_weights[0],
             smorl_weights[1],
             smorl_weights[2])
         set_stdout(args.results_path, file_name, write_to_file=args.results_to_file)
         sys.stdout.flush()
-        writer = SummaryWriter(log_dir=f"runs/{args.dataset}/gru_{int(smorl_weights[0])}{int(smorl_weights[1])}{int(smorl_weights[2])}")
         print("I'm starting gru_smorl{}_acc{}_div{}_nov{}_weighted_q_vals".format(
             str(args.smorl_loss_mult).replace('.', ''),
             smorl_weights[0],
@@ -301,23 +312,26 @@ if __name__ == '__main__':
                     print('Model is ', model_name)
                     print('Supervised loss is %.3f, SMORL loss is %.3f' % (supervised_loss.item(), smorl_loss))
                     print('Epoch {}......Step: {}....... Loss: {}'.format(epoch, total_step, scalar_loss))
-                    writer.add_scalar(f"Loss/train_{Args.skip}", scalar_loss , total_step)
                     sys.stdout.flush()
 
                 if total_step % args.eval_iter == 0:
                     print('Evaluating Main Model')
-                    val_acc_main, predictions_main = evaluate(main_QN, args, 'val', state_size, item_num, device, args.div_emb_matrix, skip=args.skip, writer=writer, step=total_step, RL=args.rl)
-                    val_acc_main, predictions_main = evaluate(main_QN, args, 'test', state_size, item_num, device, args.div_emb_matrix, skip=args.skip, writer=writer, step=total_step, RL=args.rl)
-                    predictions_main.to_csv('{}pred_main_acc{}_div{}_nov{}_epoch{}_step{}.tsv'.format(args.results_path, smorl_weights[0],smorl_weights[1],smorl_weights[2], epoch, total_step), sep='\t', index=False)
-                    print("I've saved pred main at {}pred_main_acc{}_div{}_nov{}_epoch{}_step{}.tsv".format(args.results_path, smorl_weights[0],smorl_weights[1],smorl_weights[2], epoch, total_step))
+                    val_acc_main, predictions_main = evaluate(main_QN, args, 'val', state_size, item_num, device, args.div_emb_matrix, skip=args.skip, step=total_step, RL=args.rl)
+                    #val_acc_main, predictions_main = evaluate(main_QN, args, 'test', state_size, item_num, device, args.div_emb_matrix, skip=args.skip, step=total_step, RL=args.rl)
+                    
+                    #predictions_main.to_csv('{}pred_main_acc{}_div{}_nov{}_epoch{}_step{}.tsv'.format(args.results_path, smorl_weights[0],smorl_weights[1],smorl_weights[2], epoch, total_step), sep='\t', index=False)
+                    #print("I've saved pred main at {}pred_main_acc{}_div{}_nov{}_epoch{}_step{}.tsv".format(args.results_path, smorl_weights[0],smorl_weights[1],smorl_weights[2], epoch, total_step))
+                    
                     main_QN.train()
                     print('Current accuracy of main model: ', val_acc_main)
                     print('Evaluating Target Model')
-                    val_acc_target, predictions_target = evaluate(target_QN, args, 'val', state_size, item_num, device, args.div_emb_matrix, skip=args.skip, writer=writer, step=total_step, RL=args.rl)
-                    val_acc_target, predictions_target = evaluate(target_QN, args, 'test', state_size, item_num, device, args.div_emb_matrix, skip=args.skip, writer=writer, step=total_step, RL=args.rl)
-                    predictions_target.to_csv('{}pred_target_acc{}_div{}_nov{}_epoch{}_step{}.tsv'.format(args.results_path,smorl_weights[0], smorl_weights[1],smorl_weights[2], epoch, total_step), sep='\t',index=False)
-                    print("I've saved pred target at {}pred_target_acc{}_div{}_nov{}_epoch{}_step{}.tsv".format(args.results_path,
-                        smorl_weights[0], smorl_weights[1], smorl_weights[2], epoch, total_step))
+                    val_acc_target, predictions_target = evaluate(target_QN, args, 'val', state_size, item_num, device, args.div_emb_matrix, skip=args.skip, step=total_step, RL=args.rl)
+                    #val_acc_target, predictions_target = evaluate(target_QN, args, 'test', state_size, item_num, device, args.div_emb_matrix, skip=args.skip, step=total_step, RL=args.rl)
+                    
+                    #predictions_target.to_csv('{}pred_target_acc{}_div{}_nov{}_epoch{}_step{}.tsv'.format(args.results_path,smorl_weights[0], smorl_weights[1],smorl_weights[2], epoch, total_step), sep='\t',index=False)
+                    
+                    #print("I've saved pred target at {}pred_target_acc{}_div{}_nov{}_epoch{}_step{}.tsv".format(args.results_path,
+                    #    smorl_weights[0], smorl_weights[1], smorl_weights[2], epoch, total_step))
                     target_QN.train()
                     print('Current accuracy of target model: ', val_acc_target)
 
@@ -325,8 +339,6 @@ if __name__ == '__main__':
             print('Epoch {}/{} Done'.format(epoch, args.epochs))
             print('Total Time Elapsed: {} seconds'.format(str(current_time - start_time)))
             epoch_times.append(current_time - start_time)
-        writer.flush()
-        writer.close()
         print('Total Training Time: {} seconds'.format(str(sum(epoch_times))))
         sys.stdout.close()
         sys.stdout = sys.__stdout__
