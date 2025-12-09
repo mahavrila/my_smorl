@@ -140,7 +140,7 @@ class Args:
     torch.backends.cudnn.deterministic = True
     dataset = 'rc15'
     eval_iter = 5000 if dataset == 'rc15' else 10000
-    epochs = 50
+    epochs = 60
     resume = 1
     batch_size = 256
     hidden_factor = 64
@@ -162,7 +162,7 @@ class Args:
     
     os.makedirs(results_path, exist_ok=True)
     results_to_file = True    
-    smorl_weights_set = [torch.Tensor([1.0, 1.0, 1.0])]
+    smorl_weights_set = [torch.Tensor([1.0, 0.0, 1.0])]
     smorl_weights_set_back = [torch.Tensor([1.0, 1.0, 1.0]), torch.Tensor([0.0, 1.0, 0.0]),
                          torch.Tensor([0.0, 0.0, 1.0]), torch.Tensor([0.0, 1.0, 1.0]),
                          torch.Tensor([1.0, 1.0, 0.0]), torch.Tensor([1.0, 0.0, 1.0])]
@@ -172,12 +172,11 @@ class Args:
 
 
 if __name__ == '__main__':
-    writer = SummaryWriter()
     # Network parameters
     args = Args()
 
     device = set_device(0)
-    print('Using {} For Training'.format(torch.cuda.get_device_name()))
+    print('Using {} For Training'.format(torch.cuda.get_device_name(device)))
     for smorl_weights in args.smorl_weights_set:
         file_name = 'gru_smorl{}_acc{}_div{}_nov{}_weighted_q_vals.txt'.format(
             str(args.smorl_loss_mult).replace('.', ''),
@@ -186,6 +185,7 @@ if __name__ == '__main__':
             smorl_weights[2])
         set_stdout(args.results_path, file_name, write_to_file=args.results_to_file)
         sys.stdout.flush()
+        writer = SummaryWriter(log_dir=f"runs/{args.dataset}/gru_{int(smorl_weights[0])}{int(smorl_weights[1])}{int(smorl_weights[2])}")
         print("I'm starting gru_smorl{}_acc{}_div{}_nov{}_weighted_q_vals".format(
             str(args.smorl_loss_mult).replace('.', ''),
             smorl_weights[0],
